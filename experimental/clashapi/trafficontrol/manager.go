@@ -15,6 +15,12 @@ import (
 	"github.com/gofrs/uuid/v5"
 )
 
+// OutboundTrafficCounter holds per-outbound traffic counters
+type OutboundTrafficCounter struct {
+	Upload   atomic.Int64
+	Download atomic.Int64
+}
+
 type Manager struct {
 	uploadTotal   atomic.Int64
 	downloadTotal atomic.Int64
@@ -24,6 +30,9 @@ type Manager struct {
 	closedConnections       list.List[TrackerMetadata]
 	// process     *process.Process
 	memory uint64
+
+	// Per-outbound traffic counters
+	outboundTraffic compatible.Map[string, *OutboundTrafficCounter]
 }
 
 func NewManager() *Manager {
@@ -54,6 +63,31 @@ func (m *Manager) PushUploaded(size int64) {
 
 func (m *Manager) PushDownloaded(size int64) {
 	m.downloadTotal.Add(size)
+}
+
+func (m *Manager) PushOutboundUploaded(outbound string, size int64) {
+	if outbound == "" {
+		return
+	}
+	counter, _ := m.outboundTraffic.LoadOrStore(outbound, &OutboundTrafficCounter{})
+	counter.Upload.Add(size)
+}
+
+func (m *Manager) PushOutboundDownloaded(outbound string, size int64) {
+	if outbound == "" {
+		return
+	}
+	counter, _ := m.outboundTraffic.LoadOrStore(outbound, &OutboundTrafficCounter{})
+	counter.Download.Add(size)
+}
+
+func (m *Manager) GetOutboundTraffic() map[string][2]int64 {
+	result := make(map[string][2]int64)
+	m.outboundTraffic.Range(func(tag string, counter *OutboundTrafficCounter) bool {
+		result[tag] = [2]int64{counter.Upload.Load(), counter.Download.Load()}
+		return true
+	})
+	return result
 }
 
 func (m *Manager) Total() (up int64, down int64) {
@@ -111,6 +145,7 @@ func (m *Manager) Snapshot() *Snapshot {
 func (m *Manager) ResetStatistic() {
 	m.uploadTotal.Store(0)
 	m.downloadTotal.Store(0)
+	m.outboundTraffic = compatible.Map[string, *OutboundTrafficCounter]{}
 }
 
 // CloseIdleConnections closes connections that have been idle for more than maxIdleSeconds.

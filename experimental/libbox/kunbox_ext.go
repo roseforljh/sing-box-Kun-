@@ -294,7 +294,21 @@ func GetTrafficByOutbound() *OutboundTrafficIterator {
 		return &OutboundTrafficIterator{}
 	}
 
-	// Note: Per-outbound traffic tracking is not implemented in standard sing-box
-	// This returns an empty iterator for compatibility
-	return &OutboundTrafficIterator{}
+	server, ok := globalService.clashServer.(*clashapi.Server)
+	if !ok {
+		return &OutboundTrafficIterator{}
+	}
+
+	trafficMap := server.TrafficManager().GetOutboundTraffic()
+
+	var items []OutboundTraffic
+	for tag, traffic := range trafficMap {
+		items = append(items, OutboundTraffic{
+			Tag:      tag,
+			Upload:   traffic[0],
+			Download: traffic[1],
+		})
+	}
+
+	return &OutboundTrafficIterator{items: items}
 }

@@ -155,10 +155,12 @@ func NewTCPTracker(conn net.Conn, manager *Manager, metadata adapter.InboundCont
 		ExtendedConn: bufio.NewCounterConn(conn, []N.CountFunc{func(n int64) {
 			upload.Add(n)
 			manager.PushUploaded(n)
+			manager.PushOutboundUploaded(outbound, n)
 			lastActivityAt.Store(time.Now().UnixNano())
 		}}, []N.CountFunc{func(n int64) {
 			download.Add(n)
 			manager.PushDownloaded(n)
+			manager.PushOutboundDownloaded(outbound, n)
 			lastActivityAt.Store(time.Now().UnixNano())
 		}}),
 		metadata: TrackerMetadata{
@@ -241,10 +243,12 @@ func NewUDPTracker(conn N.PacketConn, manager *Manager, metadata adapter.Inbound
 		PacketConn: bufio.NewCounterPacketConn(conn, []N.CountFunc{func(n int64) {
 			upload.Add(n)
 			manager.PushUploaded(n)
+			manager.PushOutboundUploaded(outbound, n)
 			lastActivityAt.Store(time.Now().UnixNano())
 		}}, []N.CountFunc{func(n int64) {
 			download.Add(n)
 			manager.PushDownloaded(n)
+			manager.PushOutboundDownloaded(outbound, n)
 			lastActivityAt.Store(time.Now().UnixNano())
 		}}),
 		metadata: TrackerMetadata{
