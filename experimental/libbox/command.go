@@ -17,4 +17,5 @@ const (
 	CommandConnections
 	CommandCloseConnection
 	CommandGetDeprecatedNotes
+	CommandCloseIdleConnections // Phase 2: Close idle connections
 )

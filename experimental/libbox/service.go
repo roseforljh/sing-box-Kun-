@@ -78,6 +78,7 @@ func NewService(configContent string, platformInterface PlatformInterface) (*Box
 }
 
 func (s *BoxService) Start() error {
+	SetGlobalService(s) // KunBox extension: set global service reference
 	if sFixAndroidStack {
 		var err error
 		done := make(chan struct{})
@@ -93,6 +94,7 @@ func (s *BoxService) Start() error {
 }
 
 func (s *BoxService) Close() error {
+	ClearGlobalService() // KunBox extension: clear global service reference
 	s.cancel()
 	s.urlTestHistoryStorage.Close()
 	var err error

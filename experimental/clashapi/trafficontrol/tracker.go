@@ -16,16 +16,17 @@ import (
 )
 
 type TrackerMetadata struct {
-	ID           uuid.UUID
-	Metadata     adapter.InboundContext
-	CreatedAt    time.Time
-	ClosedAt     time.Time
-	Upload       *atomic.Int64
-	Download     *atomic.Int64
-	Chain        []string
-	Rule         adapter.Rule
-	Outbound     string
-	OutboundType string
+	ID             uuid.UUID
+	Metadata       adapter.InboundContext
+	CreatedAt      time.Time
+	ClosedAt       time.Time
+	LastActivityAt *atomic.Int64 // Unix nanoseconds, updated on each read/write
+	Upload         *atomic.Int64
+	Download       *atomic.Int64
+	Chain          []string
+	Rule           adapter.Rule
+	Outbound       string
+	OutboundType   string
 }
 
 func (t TrackerMetadata) MarshalJSON() ([]byte, error) {
@@ -77,12 +78,13 @@ func (t TrackerMetadata) MarshalJSON() ([]byte, error) {
 			"dnsMode":         "normal",
 			"processPath":     processPath,
 		},
-		"upload":      t.Upload.Load(),
-		"download":    t.Download.Load(),
-		"start":       t.CreatedAt,
-		"chains":      t.Chain,
-		"rule":        rule,
-		"rulePayload": "",
+		"upload":         t.Upload.Load(),
+		"download":       t.Download.Load(),
+		"start":          t.CreatedAt,
+		"lastActivityAt": time.Unix(0, t.LastActivityAt.Load()),
+		"chains":         t.Chain,
+		"rule":           rule,
+		"rulePayload":    "",
 	})
 }
 
@@ -147,24 +149,29 @@ func NewTCPTracker(conn net.Conn, manager *Manager, metadata adapter.InboundCont
 	}
 	upload := new(atomic.Int64)
 	download := new(atomic.Int64)
+	lastActivityAt := new(atomic.Int64)
+	lastActivityAt.Store(time.Now().UnixNano())
 	tracker := &TCPConn{
 		ExtendedConn: bufio.NewCounterConn(conn, []N.CountFunc{func(n int64) {
 			upload.Add(n)
 			manager.PushUploaded(n)
+			lastActivityAt.Store(time.Now().UnixNano())
 		}}, []N.CountFunc{func(n int64) {
 			download.Add(n)
 			manager.PushDownloaded(n)
+			lastActivityAt.Store(time.Now().UnixNano())
 		}}),
 		metadata: TrackerMetadata{
-			ID:           id,
-			Metadata:     metadata,
-			CreatedAt:    time.Now(),
-			Upload:       upload,
-			Download:     download,
-			Chain:        common.Reverse(chain),
-			Rule:         matchRule,
-			Outbound:     outbound,
-			OutboundType: outboundType,
+			ID:             id,
+			Metadata:       metadata,
+			CreatedAt:      time.Now(),
+			LastActivityAt: lastActivityAt,
+			Upload:         upload,
+			Download:       download,
+			Chain:          common.Reverse(chain),
+			Rule:           matchRule,
+			Outbound:       outbound,
+			OutboundType:   outboundType,
 		},
 		manager: manager,
 	}
@@ -228,24 +235,29 @@ func NewUDPTracker(conn N.PacketConn, manager *Manager, metadata adapter.Inbound
 	}
 	upload := new(atomic.Int64)
 	download := new(atomic.Int64)
+	lastActivityAt := new(atomic.Int64)
+	lastActivityAt.Store(time.Now().UnixNano())
 	trackerConn := &UDPConn{
 		PacketConn: bufio.NewCounterPacketConn(conn, []N.CountFunc{func(n int64) {
 			upload.Add(n)
 			manager.PushUploaded(n)
+			lastActivityAt.Store(time.Now().UnixNano())
 		}}, []N.CountFunc{func(n int64) {
 			download.Add(n)
 			manager.PushDownloaded(n)
+			lastActivityAt.Store(time.Now().UnixNano())
 		}}),
 		metadata: TrackerMetadata{
-			ID:           id,
-			Metadata:     metadata,
-			CreatedAt:    time.Now(),
-			Upload:       upload,
-			Download:     download,
-			Chain:        common.Reverse(chain),
-			Rule:         matchRule,
-			Outbound:     outbound,
-			OutboundType: outboundType,
+			ID:             id,
+			Metadata:       metadata,
+			CreatedAt:      time.Now(),
+			LastActivityAt: lastActivityAt,
+			Upload:         upload,
+			Download:       download,
+			Chain:          common.Reverse(chain),
+			Rule:           matchRule,
+			Outbound:       outbound,
+			OutboundType:   outboundType,
 		},
 		manager: manager,
 	}

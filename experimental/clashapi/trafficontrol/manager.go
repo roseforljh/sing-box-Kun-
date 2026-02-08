@@ -113,6 +113,30 @@ func (m *Manager) ResetStatistic() {
 	m.downloadTotal.Store(0)
 }
 
+// CloseIdleConnections closes connections that have been idle for more than maxIdleSeconds.
+// Returns the number of connections closed.
+func (m *Manager) CloseIdleConnections(maxIdleSeconds int64) int {
+	now := time.Now().UnixNano()
+	threshold := maxIdleSeconds * int64(time.Second)
+	closedCount := 0
+
+	m.connections.Range(func(_ uuid.UUID, tracker Tracker) bool {
+		metadata := tracker.Metadata()
+		if metadata.LastActivityAt == nil {
+			return true
+		}
+		lastActivity := metadata.LastActivityAt.Load()
+		idleNanos := now - lastActivity
+		if idleNanos > threshold {
+			tracker.Close()
+			closedCount++
+		}
+		return true
+	})
+
+	return closedCount
+}
+
 type Snapshot struct {
 	Download    int64
 	Upload      int64
