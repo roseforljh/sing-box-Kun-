@@ -3,7 +3,6 @@ package libbox
 import (
 	"context"
 	"net/netip"
-	"os"
 	"runtime"
 	runtimeDebug "runtime/debug"
 	"sync"
@@ -107,8 +106,7 @@ func (s *BoxService) Close() error {
 	case <-done:
 		return err
 	case <-time.After(C.FatalStopTimeout):
-		os.Exit(1)
-		return nil
+		return E.New("box close timeout after ", C.FatalStopTimeout)
 	}
 }
 
