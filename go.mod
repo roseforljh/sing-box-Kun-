@@ -2,6 +2,8 @@ module github.com/sagernet/sing-box
 
 go 1.24.7
 
+replace github.com/sagernet/sing-vmess => ../local-mods/sing-vmess
+
 require (
 	github.com/anthropics/anthropic-sdk-go v1.26.0
 	github.com/anytls/sing-anytls v0.0.11

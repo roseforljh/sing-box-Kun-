@@ -2,7 +2,10 @@ package vless
 
 import (
 	"context"
+	"encoding/base64"
 	"net"
+	"runtime"
+	"strings"
 
 	"github.com/sagernet/sing-box/adapter"
 	"github.com/sagernet/sing-box/adapter/outbound"
@@ -12,6 +15,7 @@ import (
 	C "github.com/sagernet/sing-box/constant"
 	"github.com/sagernet/sing-box/log"
 	"github.com/sagernet/sing-box/option"
+	vlessencryption "github.com/sagernet/sing-box/protocol/vless/encryption"
 	"github.com/sagernet/sing-box/transport/v2ray"
 	"github.com/sagernet/sing-vmess/packetaddr"
 	"github.com/sagernet/sing-vmess/vless"
@@ -21,6 +25,7 @@ import (
 	"github.com/sagernet/sing/common/logger"
 	M "github.com/sagernet/sing/common/metadata"
 	N "github.com/sagernet/sing/common/network"
+	"golang.org/x/sys/cpu"
 )
 
 func RegisterOutbound(registry *outbound.Registry) {
@@ -37,6 +42,7 @@ type Outbound struct {
 	tlsConfig       tls.Config
 	tlsDialer       tls.Dialer
 	transport       adapter.V2RayClientTransport
+	encryption      *vlessencryption.ClientInstance
 	packetAddr      bool
 	xudp            bool
 }
@@ -71,6 +77,16 @@ func NewOutbound(ctx context.Context, router adapter.Router, logger log.ContextL
 		outbound.transport, err = v2ray.NewClientTransport(ctx, outbound.dialer, outbound.serverAddr, common.PtrValueOrDefault(options.Transport), outbound.tlsConfig)
 		if err != nil {
 			return nil, E.Cause(err, "create client transport: ", options.Transport.Type)
+		}
+	}
+	if options.Encryption != "" && options.Encryption != "none" {
+		nfsPKeysBytes, xorMode, seconds, padding, err := parseVLESSClientEncryption(options.Encryption)
+		if err != nil {
+			return nil, err
+		}
+		outbound.encryption = &vlessencryption.ClientInstance{}
+		if err := outbound.encryption.Init(nfsPKeysBytes, xorMode, seconds, padding); err != nil {
+			return nil, E.Cause(err, "initialize vless encryption")
 		}
 	}
 	if options.PacketEncoding == nil {
@@ -158,6 +174,12 @@ func (h *vlessDialer) DialContext(ctx context.Context, network string, destinati
 	if err != nil {
 		return nil, err
 	}
+	if h.encryption != nil {
+		conn, err = h.encryption.Handshake(conn, hasAESGCMHardwareSupport())
+		if err != nil {
+			return nil, E.Cause(err, "vless encryption handshake")
+		}
+	}
 	switch N.NetworkName(network) {
 	case N.NetworkTCP:
 		h.logger.InfoContext(ctx, "outbound connection to ", destination)
@@ -201,6 +223,13 @@ func (h *vlessDialer) ListenPacket(ctx context.Context, destination M.Socksaddr)
 		common.Close(conn)
 		return nil, err
 	}
+	if h.encryption != nil {
+		conn, err = h.encryption.Handshake(conn, hasAESGCMHardwareSupport())
+		if err != nil {
+			common.Close(conn)
+			return nil, E.Cause(err, "vless encryption handshake")
+		}
+	}
 	if h.xudp {
 		return h.client.DialEarlyXUDPPacketConn(conn, destination)
 	} else if h.packetAddr {
@@ -215,4 +244,59 @@ func (h *vlessDialer) ListenPacket(ctx context.Context, destination M.Socksaddr)
 	} else {
 		return h.client.DialEarlyPacketConn(conn, destination)
 	}
+}
+
+func parseVLESSClientEncryption(value string) ([][]byte, uint32, uint32, string, error) {
+	parts := strings.Split(value, ".")
+	if len(parts) < 4 || parts[0] != "mlkem768x25519plus" {
+		return nil, 0, 0, "", E.New("unsupported vless encryption: ", value)
+	}
+
+	var xorMode uint32
+	switch parts[1] {
+	case "native":
+	case "xorpub":
+		xorMode = 1
+	case "random":
+		xorMode = 2
+	default:
+		return nil, 0, 0, "", E.New("unsupported vless encryption mode: ", parts[1])
+	}
+
+	var seconds uint32
+	switch parts[2] {
+	case "1rtt", "0rtt":
+		seconds = 1
+	default:
+		return nil, 0, 0, "", E.New("unsupported vless encryption rtt mode: ", parts[2])
+	}
+
+	var paddingParts []string
+	var keys [][]byte
+	for _, part := range parts[3:] {
+		if len(part) < 20 {
+			paddingParts = append(paddingParts, part)
+			continue
+		}
+		decoded, err := base64.RawURLEncoding.DecodeString(part)
+		if err != nil {
+			return nil, 0, 0, "", E.Cause(err, "decode vless encryption key")
+		}
+		if len(decoded) != 32 && len(decoded) != 1184 {
+			return nil, 0, 0, "", E.New("invalid vless encryption key length: ", len(decoded))
+		}
+		keys = append(keys, decoded)
+	}
+	if len(keys) == 0 {
+		return nil, 0, 0, "", E.New("missing vless encryption key")
+	}
+	return keys, xorMode, seconds, strings.Join(paddingParts, "."), nil
+}
+
+func hasAESGCMHardwareSupport() bool {
+	hasGCMAsmAMD64 := cpu.X86.HasAES && cpu.X86.HasPCLMULQDQ && cpu.X86.HasSSE41 && cpu.X86.HasSSSE3
+	hasGCMAsmARM64 := (cpu.ARM64.HasAES && cpu.ARM64.HasPMULL) || (runtime.GOOS == "darwin" && runtime.GOARCH == "arm64")
+	hasGCMAsmS390X := cpu.S390X.HasAES && cpu.S390X.HasAESCTR && cpu.S390X.HasGHASH
+	hasGCMAsmPPC64 := runtime.GOARCH == "ppc64" || runtime.GOARCH == "ppc64le"
+	return hasGCMAsmAMD64 || hasGCMAsmARM64 || hasGCMAsmS390X || hasGCMAsmPPC64
 }
