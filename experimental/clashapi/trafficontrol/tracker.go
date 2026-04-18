@@ -22,10 +22,18 @@ type TrackerMetadata struct {
 	ClosedAt     time.Time
 	Upload       *atomic.Int64
 	Download     *atomic.Int64
+	LastActiveAt *atomic.Int64
 	Chain        []string
 	Rule         adapter.Rule
 	Outbound     string
 	OutboundType string
+}
+
+func (t *TrackerMetadata) LastActivityAtUnixMilli() int64 {
+	if t == nil || t.LastActiveAt == nil {
+		return 0
+	}
+	return t.LastActiveAt.Load()
 }
 
 func (t TrackerMetadata) MarshalJSON() ([]byte, error) {
@@ -147,12 +155,16 @@ func NewTCPTracker(conn net.Conn, manager *Manager, metadata adapter.InboundCont
 	}
 	upload := new(atomic.Int64)
 	download := new(atomic.Int64)
+	lastActiveAt := new(atomic.Int64)
+	lastActiveAt.Store(time.Now().UnixMilli())
 	tracker := &TCPConn{
 		ExtendedConn: bufio.NewCounterConn(conn, []N.CountFunc{func(n int64) {
 			upload.Add(n)
+			lastActiveAt.Store(time.Now().UnixMilli())
 			manager.PushUploaded(n)
 		}}, []N.CountFunc{func(n int64) {
 			download.Add(n)
+			lastActiveAt.Store(time.Now().UnixMilli())
 			manager.PushDownloaded(n)
 		}}),
 		metadata: TrackerMetadata{
@@ -161,6 +173,7 @@ func NewTCPTracker(conn net.Conn, manager *Manager, metadata adapter.InboundCont
 			CreatedAt:    time.Now(),
 			Upload:       upload,
 			Download:     download,
+			LastActiveAt: lastActiveAt,
 			Chain:        common.Reverse(chain),
 			Rule:         matchRule,
 			Outbound:     outbound,
@@ -228,12 +241,16 @@ func NewUDPTracker(conn N.PacketConn, manager *Manager, metadata adapter.Inbound
 	}
 	upload := new(atomic.Int64)
 	download := new(atomic.Int64)
+	lastActiveAt := new(atomic.Int64)
+	lastActiveAt.Store(time.Now().UnixMilli())
 	trackerConn := &UDPConn{
 		PacketConn: bufio.NewCounterPacketConn(conn, []N.CountFunc{func(n int64) {
 			upload.Add(n)
+			lastActiveAt.Store(time.Now().UnixMilli())
 			manager.PushUploaded(n)
 		}}, []N.CountFunc{func(n int64) {
 			download.Add(n)
+			lastActiveAt.Store(time.Now().UnixMilli())
 			manager.PushDownloaded(n)
 		}}),
 		metadata: TrackerMetadata{
@@ -242,6 +259,7 @@ func NewUDPTracker(conn N.PacketConn, manager *Manager, metadata adapter.Inbound
 			CreatedAt:    time.Now(),
 			Upload:       upload,
 			Download:     download,
+			LastActiveAt: lastActiveAt,
 			Chain:        common.Reverse(chain),
 			Rule:         matchRule,
 			Outbound:     outbound,

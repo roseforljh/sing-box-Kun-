@@ -138,6 +138,33 @@ func (m *Manager) Connection(id uuid.UUID) Tracker {
 	return connection
 }
 
+func (m *Manager) CloseIdleConnections(idleTimeout time.Duration) int64 {
+	threshold := idleTimeout.Milliseconds()
+	now := time.Now().UnixMilli()
+	closedCount := int64(0)
+	m.connections.Range(func(_ uuid.UUID, tracker Tracker) bool {
+		if tracker == nil {
+			return true
+		}
+		metadata := tracker.Metadata()
+		if metadata == nil {
+			return true
+		}
+		lastActivityAt := metadata.LastActivityAtUnixMilli()
+		if lastActivityAt == 0 {
+			lastActivityAt = metadata.CreatedAt.UnixMilli()
+		}
+		if now-lastActivityAt < threshold {
+			return true
+		}
+		if tracker.Close() == nil {
+			closedCount++
+		}
+		return true
+	})
+	return closedCount
+}
+
 func (m *Manager) Snapshot() *Snapshot {
 	var connections []Tracker
 	m.connections.Range(func(_ uuid.UUID, value Tracker) bool {
