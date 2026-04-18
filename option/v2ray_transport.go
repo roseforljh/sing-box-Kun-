@@ -15,6 +15,7 @@ type _V2RayTransportOptions struct {
 	QUICOptions        V2RayQUICOptions        `json:"-"`
 	GRPCOptions        V2RayGRPCOptions        `json:"-"`
 	HTTPUpgradeOptions V2RayHTTPUpgradeOptions `json:"-"`
+	XHTTPOptions       V2RayXHTTPOptions       `json:"-"`
 }
 
 type V2RayTransportOptions _V2RayTransportOptions
@@ -32,6 +33,8 @@ func (o V2RayTransportOptions) MarshalJSON() ([]byte, error) {
 		v = o.GRPCOptions
 	case C.V2RayTransportTypeHTTPUpgrade:
 		v = o.HTTPUpgradeOptions
+	case C.V2RayTransportTypeXHTTP, C.V2RayTransportTypeSplitHTTP:
+		v = o.XHTTPOptions
 	case "":
 		return nil, E.New("missing transport type")
 	default:
@@ -57,6 +60,8 @@ func (o *V2RayTransportOptions) UnmarshalJSON(bytes []byte) error {
 		v = &o.GRPCOptions
 	case C.V2RayTransportTypeHTTPUpgrade:
 		v = &o.HTTPUpgradeOptions
+	case C.V2RayTransportTypeXHTTP, C.V2RayTransportTypeSplitHTTP:
+		v = &o.XHTTPOptions
 	default:
 		return E.New("unknown transport type: " + o.Type)
 	}
@@ -97,4 +102,17 @@ type V2RayHTTPUpgradeOptions struct {
 	Host    string               `json:"host,omitempty"`
 	Path    string               `json:"path,omitempty"`
 	Headers badoption.HTTPHeader `json:"headers,omitempty"`
+}
+
+type V2RayXHTTPOptions struct {
+	Host                 badoption.Listable[string] `json:"host,omitempty"`
+	Path                 string                     `json:"path,omitempty"`
+	Mode                 string                     `json:"mode,omitempty"`
+	Headers              badoption.HTTPHeader       `json:"headers,omitempty"`
+	XPaddingBytes        string                     `json:"x_padding_bytes,omitempty"`
+	NoGRPCHeader         bool                       `json:"no_grpc_header,omitempty"`
+	NoSSEHeader          bool                       `json:"no_sse_header,omitempty"`
+	ScMaxEachPostBytes   int64                      `json:"sc_max_each_post_bytes,omitempty"`
+	ScMinPostsIntervalMs int64                      `json:"sc_min_posts_interval_ms,omitempty"`
+	ScMaxBufferedPosts   int64                      `json:"sc_max_buffered_posts,omitempty"`
 }
