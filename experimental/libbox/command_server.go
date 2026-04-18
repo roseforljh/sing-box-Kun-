@@ -67,6 +67,7 @@ func NewCommandServer(handler CommandServerHandler, platformInterface PlatformIn
 		// GroupID:          sGroupID,
 		// SystemProxyEnabled: false,
 	})
+	setCurrentStartedService(server.StartedService)
 	return server, nil
 }
 
@@ -156,6 +157,7 @@ func (s *CommandServer) Start() error {
 }
 
 func (s *CommandServer) Close() {
+	clearCurrentStartedService(s.StartedService)
 	if s.grpcServer != nil {
 		s.grpcServer.Stop()
 	}

@@ -139,6 +139,18 @@ func (i *Instance) PauseManager() pause.Manager {
 	return i.pauseManager
 }
 
+func (i *Instance) ConnectionManager() adapter.ConnectionManager {
+	return i.connectionManager
+}
+
+func (i *Instance) ClashServer() adapter.ClashServer {
+	return i.clashServer
+}
+
+func (i *Instance) CacheFile() adapter.CacheFile {
+	return i.cacheFile
+}
+
 func parseConfig(ctx context.Context, configContent string) (option.Options, error) {
 	options, err := json.UnmarshalExtendedContext[option.Options](ctx, []byte(configContent))
 	if err != nil {
